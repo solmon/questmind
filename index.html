@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>QuestMind WASM Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        input {
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 200px;
+        }
+        #output {
+            background-color: #f9f9f9;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 20px;
+            min-height: 100px;
+            border: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>QuestMind WASM Demo</h1>
+        
+        <div>
+            <h3>Greet Function</h3>
+            <input type="text" id="nameInput" placeholder="Enter your name" value="World">
+            <button onclick="greetUser()">Greet</button>
+        </div>
+
+        <div>
+            <h3>Add Function</h3>
+            <input type="number" id="num1" placeholder="Number 1" value="5">
+            <input type="number" id="num2" placeholder="Number 2" value="3">
+            <button onclick="addNumbers()">Add</button>
+        </div>
+
+        <div>
+            <h3>Text Processing</h3>
+            <input type="text" id="textInput" placeholder="Enter text" value="hello world">
+            <button onclick="processText()">Process</button>
+        </div>
+
+        <div id="output">
+            <p>Output will appear here...</p>
+        </div>
+    </div>
+
+    <script type="module">
+        import init, { greet, add, process_text } from './pkg/questmind.js';
+        
+        async function run() {
+            await init();
+            
+            window.greetUser = function() {
+                const name = document.getElementById('nameInput').value;
+                greet(name);
+                updateOutput(`Greeted: ${name} (check console for message)`);
+            };
+            
+            window.addNumbers = function() {
+                const num1 = parseInt(document.getElementById('num1').value);
+                const num2 = parseInt(document.getElementById('num2').value);
+                const result = add(num1, num2);
+                updateOutput(`${num1} + ${num2} = ${result}`);
+            };
+            
+            window.processText = function() {
+                const text = document.getElementById('textInput').value;
+                const result = process_text(text);
+                updateOutput(`Processed: ${result}`);
+            };
+            
+            function updateOutput(message) {
+                const output = document.getElementById('output');
+                const timestamp = new Date().toLocaleTimeString();
+                output.innerHTML += `<p>[${timestamp}] ${message}</p>`;
+            }
+            
+            updateOutput("QuestMind WASM module loaded successfully!");
+        }
+        
+        run();
+    </script>
+</body>
+</html>

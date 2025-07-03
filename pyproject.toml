@@ -1,0 +1,6 @@
+[virtualenvs]
+create = false
+
+[tool.poe.tasks]
+# Example: poe test
+serve = "uvicorn apps.api.main:app --reload"

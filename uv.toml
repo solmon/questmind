@@ -1,0 +1,6 @@
+# Python monorepo setup for UV and poe
+[tool.uv]
+# Add python packages here as needed
+
+[tool.poe]
+# Add poe tasks here as needed

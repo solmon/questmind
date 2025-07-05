@@ -1,6 +1,9 @@
 # Python monorepo setup for UV and poe
-[tool.uv]
-# Add python packages here as needed
+# This file should only contain valid uv configuration keys, not [tool.poe] or any section headers.
+# Remove all TOML sections for compatibility with uv.
+# If you need to configure poe, use pyproject.toml instead.
 
-[tool.poe]
-# Add poe tasks here as needed
+# uv.toml for Python dependency management with uv
+# See https://github.com/astral-sh/uv/blob/main/docs/configuration.md for all options
+required-version = ">=0.1.36"
+# Add more uv configuration options here as needed, but do not use TOML sections or headers.

@@ -1,75 +1,68 @@
-# QuestMind
+# Questmind Monorepo
 
-A WebAssembly project built with Rust that demonstrates basic WASM functionality.
+This monorepo is managed with [Nx](https://nx.dev/) and supports both Python and Node.js/TypeScript projects.
+
+## Structure
+
+- `apps/api` – FastAPI backend (Python)
+- `apps/web` – Next.js frontend (TypeScript/React)
+- `packages/shared` – Shared Python code
+- `packages/ui` – Shared JS/TS UI components
 
 ## Prerequisites
 
-Before you begin, ensure you have the following installed:
+- [pnpm](https://pnpm.io/) for JS/TS dependencies
+- [uv](https://github.com/astral-sh/uv) for Python dependencies
+- [poethepoet](https://github.com/nat-n/poethepoet) for Python task running
 
-- [Rust](https://rustup.rs/) (latest stable version)
-- [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/)
-
-### Installing Prerequisites
-
-1. Install Rust:
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source ~/.cargo/env
-```
-
-2. Install wasm-pack:
-```bash
-curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-```
-
-## Building the Project
-
-To build the WebAssembly module:
+## Install dependencies
 
 ```bash
-wasm-pack build --target web
+pnpm install           # Install JS/TS dependencies
+uv pip install -r requirements.txt  # (If you add a requirements.txt for Python shared deps)
 ```
 
-This will generate the WASM module and JavaScript bindings in the `pkg/` directory.
+## API (FastAPI)
 
-## Running the Demo
+- **Run locally:**
+  ```bash
+  poe serve
+  ```
+  (Runs `uvicorn apps.api.main:app --reload`)
 
-1. Build the project:
-```bash
-npm run build
-```
+- **Install Python deps:**
+  ```bash
+  uv pip install fastapi pydantic
+  ```
 
-2. Start a local server:
-```bash
-npm run serve
-```
+## Web (Next.js)
 
-3. Open your browser and navigate to `http://localhost:8000`
+- **Run locally:**
+  ```bash
+  pnpm --filter ./apps/web dev
+  ```
 
-## Project Structure
+- **Build:**
+  ```bash
+  pnpm --filter ./apps/web build
+  ```
 
-- `src/lib.rs` - Main Rust source code with WASM exports
-- `src/main.rs` - Not used (library crate)
-- `Cargo.toml` - Rust project configuration
-- `index.html` - Demo HTML page
-- `package.json` - npm scripts for building and serving
-- `pkg/` - Generated WASM module and JS bindings (after build)
+- **Preview production build:**
+  ```bash
+  pnpm --filter ./apps/web start
+  ```
 
-## Functions Exported to JavaScript
+## Nx Monorepo Commands
 
-- `greet(name: string)` - Logs a greeting message to console
-- `add(a: number, b: number): number` - Adds two numbers
-- `process_text(text: string): string` - Processes and transforms text
+- **Run all builds:**
+  ```bash
+  pnpm nx run-many -t build
+  ```
+- **See project graph:**
+  ```bash
+  pnpm nx graph
+  ```
 
-## Development
+---
 
-For development with auto-rebuild:
-```bash
-npm run dev
-```
-
-## License
-
-MIT
-
-# questmind
+For more, see the individual app/package README files or the Nx documentation.

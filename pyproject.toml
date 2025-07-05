@@ -2,5 +2,6 @@
 create = false
 
 [tool.poe.tasks]
-# Example: poe test
 serve = "uvicorn apps.api.main:app --reload"
+servemodel = "uvicorn apps.lmodelhost.main:app --reload"
+# Add more poe tasks as needed

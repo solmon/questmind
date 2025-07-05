@@ -15,5 +15,3 @@ node_modules/
 .github/instructions/nx.instructions.md
 
 # Nx monorepo structure
-packages/*
-apps/*

@@ -8,5 +8,10 @@
     "shadcn-ui": "^0.9.5",
     "tailwindcss": "^4.1.11",
     "vite": "^7.0.1"
+  },
+  "scripts": {
+    "dev:web": "pnpm --filter web dev",
+    "build:web": "pnpm --filter web build",
+    "start:web": "pnpm --filter web start"
   }
 }

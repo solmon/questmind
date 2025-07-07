@@ -20,7 +20,7 @@ node_modules/
 
 # Nx monorepo structure
 # ignore all files in the _pycache directory
-**/__pycache__/
+__pycache__/
 
 # except for the .gitignore file
 !.nx/.gitignore 

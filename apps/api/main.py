@@ -1,17 +1,8 @@
-# Example FastAPI app
-from fastapi import FastAPI
-from pydantic import BaseModel
+import gradio as gr
 
-app = FastAPI()
+def greet(name):
+    return f"Hello, {name}!"
 
-class Item(BaseModel):
-    name: str
-    description: str = None
+demo = gr.Interface(fn=greet, inputs="text", outputs="text")
+demo.launch()
 
-@app.get("/")
-def read_root():
-    return {"Hello": "World"}
-
-@app.post("/items/")
-def create_item(item: Item):
-    return item

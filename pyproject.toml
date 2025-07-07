@@ -4,4 +4,5 @@ create = false
 [tool.poe.tasks]
 serve = "uvicorn apps.api.main:app --reload"
 servemodel = "uvicorn apps.lmodelhost.main:app --reload"
+serveg = "python -m apps.api.main demo"
 # Add more poe tasks as needed

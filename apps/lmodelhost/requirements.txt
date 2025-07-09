@@ -3,4 +3,6 @@ pydantic
 transformers
 poethepoet
 torch
-dotenv
+python-dotenv
+vllm
+ray[serve]

@@ -5,4 +5,5 @@ create = false
 serve = "uvicorn apps.api.main:app --reload"
 servemodel = "uvicorn apps.lmodelhost.main:app --reload"
 serveg = "python -m apps.api.main demo"
+serveqwin = "python -m vllm.entrypoints.api_server --model deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B --tensor-parallel-size 1 --max-model-len 4096"
 # Add more poe tasks as needed

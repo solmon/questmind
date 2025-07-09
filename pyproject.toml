@@ -6,4 +6,9 @@ serve = "uvicorn apps.api.main:app --reload"
 servemodel = "uvicorn apps.lmodelhost.main:app --reload"
 serveg = "python -m apps.api.main demo"
 serveqwin = "python -m vllm.entrypoints.api_server --model deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B --tensor-parallel-size 1 --max-model-len 4096"
+serveop = "python -m vllm.entrypoints.openai.api_server --model deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B  --tensor-parallel-size 1 --max-model-len 4096"
 # Add more poe tasks as needed
+
+[tool.poe.tasks.shoppingagent]
+cmd = "python apps/shoppingagent/main.py"
+help = "Run the ShoppingAgent Gradio app with human-in-the-loop and vLLM integration"

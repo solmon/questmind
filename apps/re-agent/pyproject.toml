@@ -1,0 +1,11 @@
+[tool.poe.tasks]
+dev = "python main.py"
+
+[project]
+name = "re-agent"
+dependencies = [
+    "langgraph",
+    "pydantic",
+    "geminiapi",
+    "gradio",
+]

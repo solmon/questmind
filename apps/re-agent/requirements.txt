@@ -1,0 +1,10 @@
+pydantic
+gradio
+poethepoet
+python-dotenv
+requests
+langchain-google-genai
+langchain-core
+langgraph
+langchain-community
+langchain-core

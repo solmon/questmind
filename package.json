@@ -12,6 +12,7 @@
   "scripts": {
     "dev:web": "pnpm --filter web dev",
     "build:web": "pnpm --filter web build",
-    "start:web": "pnpm --filter web start"
+    "start:web": "pnpm --filter web start",
+    "start:amz-mcp": "pnpm --filter amz-mcp start"
   }
 }

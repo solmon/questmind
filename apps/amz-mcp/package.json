@@ -13,6 +13,7 @@
     "zod": "^3.22.4",
     "node-fetch": "^3.3.2",
     "@modelcontextprotocol/sdk": "1.16.0",
-    "node:crypto": "18.16.0"
+    "amazon-sp-api": "^1.1.6",
+    "dotenv": "^16.4.5"
   }
 }

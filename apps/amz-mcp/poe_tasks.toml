@@ -1,0 +1,3 @@
+# tasks for poe the poet
+[tool.poe.tasks]
+serve = "uvicorn main:app --reload"

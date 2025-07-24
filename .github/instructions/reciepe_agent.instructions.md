@@ -15,7 +15,7 @@ Coding standards, domain knowledge, and preferences that AI should follow.
 - Use the [LangGraph Agentic Orchestrator Inspector](https://langchain.com/docs/langgraph/agentic-orchestrator/inspector) for debugging and inspecting agent workflows.
 - Use the [LangGraph Agentic Recipe Inspector](https://langchain.com/docs/langgraph/agentic-recipe/inspector) for debugging and inspecting agent recipes.
 - Use the [LangGraph Agentic Orchestrator Debugger](https://langchain.com/docs/langgraph/agentic-orchestrator/debugger) for debugging agent workflows.
-
+- use langchain_mcp_adapters.client for MCP client interactions. (https://pypi.org/project/langchain-mcp-adapters/)
 
 # Coding standards
 - Follow LangGraph structure for the project

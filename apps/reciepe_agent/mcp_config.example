@@ -1,0 +1,60 @@
+"""
+Example configuration for MCP servers with Recipe Agent.
+
+This file shows how to configure different MCP servers for the Recipe Agent.
+Copy this to .env or set these environment variables to enable MCP integration.
+"""
+
+# Enable MCP servers (set to 'true' to enable)
+# RECIPE_SEARCH_MCP_ENABLED=false
+# NUTRITION_MCP_ENABLED=false
+# MEAL_PLANNER_MCP_ENABLED=false
+# GROCERY_LIST_MCP_ENABLED=false
+# WINE_PAIRING_MCP_ENABLED=false
+
+# Recipe Search MCP Server Configuration
+# RECIPE_SEARCH_MCP_COMMAND=uvx
+# RECIPE_SEARCH_MCP_ARGS=mcp-server-recipe-search
+# RECIPE_API_KEY=your-recipe-api-key
+# RECIPE_API_URL=https://api.recipe-service.com
+
+# Nutrition Calculator MCP Server Configuration  
+# NUTRITION_MCP_COMMAND=uvx
+# NUTRITION_MCP_ARGS=mcp-server-nutrition
+# NUTRITION_API_KEY=your-nutrition-api-key
+# NUTRITION_API_URL=https://api.nutrition-service.com
+
+# Meal Planner MCP Server Configuration
+# MEAL_PLANNER_MCP_COMMAND=uvx
+# MEAL_PLANNER_MCP_ARGS=mcp-server-meal-planner
+# MEAL_PLANNER_API_KEY=your-meal-planner-api-key
+# MEAL_PLANNER_API_URL=https://api.meal-planner-service.com
+
+# Grocery List MCP Server Configuration
+# GROCERY_LIST_MCP_COMMAND=uvx
+# GROCERY_LIST_MCP_ARGS=mcp-server-grocery-list
+# GROCERY_API_KEY=your-grocery-api-key
+# GROCERY_API_URL=https://api.grocery-service.com
+
+# Wine Pairing MCP Server Configuration
+# WINE_PAIRING_MCP_COMMAND=uvx
+# WINE_PAIRING_MCP_ARGS=mcp-server-wine-pairing
+# WINE_API_KEY=your-wine-api-key
+# WINE_API_URL=https://api.wine-service.com
+
+# Custom MCP servers configuration (JSON format)
+# MCP_SERVERS_CONFIG='[{"name": "custom_server", "command": "python", "args": ["path/to/server.py"], "env": {"API_KEY": "key"}}]'
+
+# Alternative: Use a local math MCP server for testing
+# RECIPE_SEARCH_MCP_ENABLED=true
+# RECIPE_SEARCH_MCP_COMMAND=uvx
+# RECIPE_SEARCH_MCP_ARGS=mcp-server-math
+
+# Example of using a streamable HTTP transport (as shown in the current code)
+# The current configuration in graph.py uses:
+# MultiServerMCPClient({
+#     "math": {
+#         "transport": "streamable_http", 
+#         "url": "http://localhost:8000/mcp/"
+#     }
+# })

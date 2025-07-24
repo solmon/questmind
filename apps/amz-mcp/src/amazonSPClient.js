@@ -10,9 +10,24 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 class AmazonSPClient {
     constructor() {
-        // Check if credentials are provided
-        if (!process.env.AMAZON_CLIENT_ID || !process.env.AMAZON_CLIENT_SECRET) {
-            console.warn('Amazon SP API credentials not configured. Using mock data.');
+        // Check if all required credentials are provided
+        const requiredCredentials = [
+            'AMAZON_CLIENT_ID',
+            'AMAZON_CLIENT_SECRET', 
+            'AMAZON_REFRESH_TOKEN',
+            'AMAZON_ACCESS_KEY_ID',
+            'AMAZON_SECRET_ACCESS_KEY'
+        ];
+        
+        const missingCredentials = requiredCredentials.filter(cred => 
+            !process.env[cred] || 
+            process.env[cred].includes('your_') || 
+            process.env[cred].includes('_here')
+        );
+        
+        if (missingCredentials.length > 0) {
+            console.warn(`Missing Amazon SP API credentials: ${missingCredentials.join(', ')}`);
+            console.warn('Using mock data. Please configure all required credentials.');
             this.useMockData = true;
             return;
         }
@@ -34,9 +49,7 @@ class AmazonSPClient {
                 refresh_token: process.env.AMAZON_REFRESH_TOKEN,
                 credentials: {
                     SELLING_PARTNER_APP_CLIENT_ID: process.env.AMAZON_CLIENT_ID,
-                    SELLING_PARTNER_APP_CLIENT_SECRET: process.env.AMAZON_CLIENT_SECRET,
-                    AWS_ACCESS_KEY_ID: process.env.AMAZON_ACCESS_KEY_ID,
-                    AWS_SECRET_ACCESS_KEY: process.env.AMAZON_SECRET_ACCESS_KEY,
+                    SELLING_PARTNER_APP_CLIENT_SECRET: process.env.AMAZON_CLIENT_SECRET                    
                 },
                 // Configure for sandbox environment
                 sandbox: process.env.AMAZON_SANDBOX === 'true',
@@ -44,7 +57,8 @@ class AmazonSPClient {
                 options: {
                     https_agent: new https.Agent({
                         rejectUnauthorized: false
-                    })
+                    }),
+                    use_sandbox: process.env.AMAZON_SANDBOX === 'true'
                 }
             });
             this.marketplaceId = process.env.AMAZON_MARKETPLACE_ID || 'ATVPDKIKX0DER';
@@ -62,27 +76,47 @@ class AmazonSPClient {
         }
         
         try {
-            // Use Catalog Items API to search for products
-            const searchParams = {
-                marketplaceIds: [this.marketplaceId],
-                keywords: keywords,
-                pageSize: Math.min(maxResults, 20), // Amazon limits to 20 per page
-            };
-
-            if (category) {
-                searchParams.browseNodeId = category;
-            }
-
+            console.log(`Searching for products with keywords: "${keywords}"`);
+            console.log(`Marketplace: ${this.marketplaceId}`);
+            console.log(`Sandbox mode: ${process.env.AMAZON_SANDBOX === 'true'}`);
+            
+            // Use the correct API structure for amazon-sp-api library
             const response = await this.sellingPartner.callAPI({
                 operation: 'searchCatalogItems',
-                endpoint: 'catalogItems',
-                query: searchParams
+                endpoint: 'catalog',
+                version: 'v0',
+                query: {
+                    MarketplaceId: this.marketplaceId,
+                    Keywords: keywords,
+                    MaxResultsPerPage: Math.min(maxResults, 20)
+                }
             });
 
-            return this.formatSearchResults(response.items || []);
+            console.log('SP API Response:', JSON.stringify(response, null, 2));
+            return this.formatSearchResults(response.payload?.Items || []);
         } catch (error) {
             console.error('Error searching products:', error);
-            throw new Error(`Amazon SP API search failed: ${error.message}`);
+            console.error('Error details:', JSON.stringify(error, null, 2));
+            
+            // Fallback: Try with different API version
+            try {
+                console.log('Retrying with catalogItems v2022-04-01...');
+                const fallbackResponse = await this.sellingPartner.callAPI({
+                    operation: 'searchCatalogItems',
+                    endpoint: 'catalogItems',
+                    version: '2022-04-01',
+                    query: {
+                        marketplaceIds: [this.marketplaceId],
+                        keywords: keywords,
+                        pageSize: Math.min(maxResults, 20)
+                    }
+                });
+                console.log('Fallback SP API Response:', JSON.stringify(fallbackResponse, null, 2));
+                return this.formatSearchResults(fallbackResponse.items || []);
+            } catch (fallbackError) {
+                console.error('Fallback also failed:', fallbackError);
+                throw new Error(`Amazon SP API search failed: ${error.message}`);
+            }
         }
     }
 
@@ -92,22 +126,73 @@ class AmazonSPClient {
         }
         
         try {
+            console.log(`Attempting to get product info for ASIN: ${asin}`);
+            console.log(`Using marketplace: ${this.marketplaceId}`);
+            console.log(`Sandbox mode: ${process.env.AMAZON_SANDBOX === 'true'}`);
+            
+            // Try the v0 catalog API first
             const response = await this.sellingPartner.callAPI({
                 operation: 'getCatalogItem',
-                endpoint: 'catalogItems',
+                endpoint: 'catalog',
+                version: 'v0',
                 path: {
                     asin: asin
                 },
                 query: {
-                    marketplaceIds: [this.marketplaceId],
-                    includedData: ['attributes', 'images', 'productTypes', 'relationships', 'salesRanks']
+                    MarketplaceId: this.marketplaceId
                 }
             });
 
-            return this.formatProductInfo(response);
+            console.log('SP API Response:', JSON.stringify(response, null, 2));
+            return this.formatProductInfoV0(response.payload || {});
         } catch (error) {
-            console.error('Error getting product info:', error);
-            throw new Error(`Amazon SP API product info failed: ${error.message}`);
+            console.error('Error getting product info (v0):', error);
+            console.error('Error details:', JSON.stringify(error, null, 2));
+            
+            // Try the newer catalogItems API as fallback
+            try {
+                console.log('Retrying with catalogItems v2022-04-01...');
+                const fallbackResponse = await this.sellingPartner.callAPI({
+                    operation: 'getCatalogItem',
+                    endpoint: 'catalogItems',
+                    version: '2022-04-01',
+                    path: {
+                        asin: asin
+                    },
+                    query: {
+                        marketplaceIds: [this.marketplaceId],
+                        includedData: ['attributes', 'images', 'productTypes']
+                    }
+                });
+                console.log('Fallback SP API Response:', JSON.stringify(fallbackResponse, null, 2));
+                return this.formatProductInfo(fallbackResponse);
+            } catch (fallbackError) {
+                console.error('Fallback also failed:', fallbackError);
+                
+                // Final attempt with minimal parameters for sandbox
+                if (process.env.AMAZON_SANDBOX === 'true') {
+                    try {
+                        console.log('Final attempt with minimal parameters...');
+                        const minimalResponse = await this.sellingPartner.callAPI({
+                            operation: 'getCatalogItem',
+                            endpoint: 'catalogItems',
+                            version: '2022-04-01',
+                            path: {
+                                asin: asin
+                            },
+                            query: {
+                                marketplaceIds: [this.marketplaceId]
+                            }
+                        });
+                        return this.formatProductInfo(minimalResponse);
+                    } catch (minimalError) {
+                        console.error('All attempts failed:', minimalError);
+                        throw new Error(`Amazon SP API product info failed: ${error.message}`);
+                    }
+                }
+                
+                throw new Error(`Amazon SP API product info failed: ${error.message}`);
+            }
         }
     }
 
@@ -184,13 +269,28 @@ class AmazonSPClient {
     }
 
     formatSearchResults(items) {
-        return items.map(item => ({
-            id: item.asin,
-            title: item.attributes?.item_name?.[0]?.value || 'Unknown Product',
-            price: this.formatPrice(item.attributes?.list_price?.[0]),
-            url: `https://amazon.com/dp/${item.asin}`,
-            image: item.images?.[0]?.images?.[0]?.link || null
-        }));
+        return items.map(item => {
+            // Handle both v0 and v2022-04-01 API response formats
+            if (item.Identifiers) {
+                // v0 format
+                return {
+                    id: item.Identifiers.MarketplaceASIN?.ASIN || 'unknown',
+                    title: item.AttributeSets?.[0]?.Title || 'Unknown Product',
+                    price: this.formatPriceV0(item.AttributeSets?.[0]?.ListPrice),
+                    url: item.DetailPageURL || `https://amazon.com/dp/${item.Identifiers.MarketplaceASIN?.ASIN}`,
+                    image: item.AttributeSets?.[0]?.SmallImage?.URL || null
+                };
+            } else {
+                // v2022-04-01 format
+                return {
+                    id: item.asin,
+                    title: item.attributes?.item_name?.[0]?.value || 'Unknown Product',
+                    price: this.formatPrice(item.attributes?.list_price?.[0]),
+                    url: `https://amazon.com/dp/${item.asin}`,
+                    image: item.images?.[0]?.images?.[0]?.link || null
+                };
+            }
+        });
     }
 
     formatProductInfo(product) {
@@ -207,9 +307,29 @@ class AmazonSPClient {
         };
     }
 
+    formatProductInfoV0(product) {
+        // Format for the older v0 catalog API response structure
+        return {
+            id: product.Identifiers?.MarketplaceASIN?.ASIN || 'unknown',
+            title: product.AttributeSets?.[0]?.Title || 'Unknown Product',
+            price: this.formatPriceV0(product.AttributeSets?.[0]?.ListPrice),
+            url: product.DetailPageURL || `https://amazon.com/dp/${product.Identifiers?.MarketplaceASIN?.ASIN}`,
+            image: product.AttributeSets?.[0]?.SmallImage?.URL || null,
+            brand: product.AttributeSets?.[0]?.Brand || null,
+            features: product.AttributeSets?.[0]?.Feature || [],
+            dimensions: product.AttributeSets?.[0]?.PackageDimensions || null,
+            weight: product.AttributeSets?.[0]?.ItemDimensions?.Weight || null
+        };
+    }
+
     formatPrice(priceData) {
         if (!priceData) return null;
         return `${priceData.currency_code} ${priceData.amount}`;
+    }
+
+    formatPriceV0(priceData) {
+        if (!priceData) return null;
+        return `${priceData.CurrencyCode} ${priceData.Amount}`;
     }
 }
 

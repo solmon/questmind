@@ -6,7 +6,9 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "node src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "verify": "node verify-credentials.js",
+    "test": "node test-mcp-proper.js"
   },
   "dependencies": {
     "express": "^4.19.2",

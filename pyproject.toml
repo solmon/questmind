@@ -8,9 +8,18 @@ serveg = "python -m apps.api.main demo"
 serveqwin = "python -m vllm.entrypoints.api_server --model deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B --tensor-parallel-size 1 --max-model-len 4096"
 serveop = "python -m vllm.entrypoints.openai.api_server --model deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B  --tensor-parallel-size 1 --max-model-len 4096"
 reagent = "python apps/re-agent/main.py"
+recipeagent = "python apps/reciepe_agent/main.py"
 
 # Add more poe tasks as needed
 
 [tool.poe.tasks.shoppingagent]
 cmd = "python apps/shoppingagent/main.py"
 help = "Run the ShoppingAgent Gradio app with human-in-the-loop and vLLM integration"
+
+[tool.poe.tasks.recipeagent-cli]
+cmd = "python apps/reciepe_agent/main.py cli"
+help = "Run the Recipe Agent in CLI mode"
+
+[tool.poe.tasks.recipeagent-serve]
+cmd = "python apps/reciepe_agent/main.py serve"
+help = "Run the Recipe Agent API server"

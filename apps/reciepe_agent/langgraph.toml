@@ -1,0 +1,25 @@
+# LangGraph configuration file
+# This file is used by the LangGraph CLI for development and debugging
+
+dependencies = [
+    "langgraph>=0.2.0",
+    "langchain>=0.3.0", 
+    "langchain-openai>=0.2.0",
+    "langchain-google-genai>=0.3.0",
+    "langchain-community>=0.3.0",
+    "python-dotenv>=1.0.0",
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "pydantic>=2.0.0"
+]
+
+graphs = {
+    "recipe_agent" = "./agent/graph.py:recipe_agent"
+}
+
+env = ".env"
+
+[tool.langgraph]
+# LangGraph Studio configuration
+port = 8123
+host = "127.0.0.1"

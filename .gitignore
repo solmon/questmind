@@ -24,3 +24,5 @@ node_modules/
 
 # except for the .gitignore file
 !.nx/.gitignore 
+
+zscaler_root.crt

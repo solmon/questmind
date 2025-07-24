@@ -5,8 +5,8 @@ from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langchain_core.messages import HumanMessage
 
-from .state import RecipeAgentState
-from .nodes import (
+from agent.state import RecipeAgentState
+from agent.nodes import (
     classify_intent_node,
     search_recipes_node,
     recommend_recipes_node,
@@ -15,7 +15,7 @@ from .nodes import (
     llm_response_node,
     human_input_node
 )
-from .tools import recipe_tools
+from agent.tools import recipe_tools
 
 
 def route_intent(state: RecipeAgentState) -> Literal["search", "recommend", "substitute", "plan", "nutrition", "general"]:

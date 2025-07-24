@@ -7,7 +7,7 @@ node_modules/
 .env
 .vscode/
 
-
+.langgraph_api/
 
 .nx/cache
 .nx/workspace-data

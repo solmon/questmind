@@ -8,8 +8,8 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 
-from .state import RecipeAgentState
-from .tools import recipe_tools
+from agent.state import RecipeAgentState
+from agent.tools import recipe_tools
 
 load_dotenv()
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
@@ -47,7 +47,7 @@ def search_recipes_node(state: RecipeAgentState) -> Dict[str, Any]:
     cuisine_preference = state.get("cuisine_preference")
     
     # Use the search_recipes tool
-    from .tools import search_recipes
+    from agent.tools import search_recipes
     
     try:
         results = search_recipes.invoke({
@@ -76,7 +76,7 @@ def recommend_recipes_node(state: RecipeAgentState) -> Dict[str, Any]:
     cuisine_preference = state.get("cuisine_preference")
     
     # For recommendations, we'll search with a general query
-    from .tools import search_recipes
+    from agent.tools import search_recipes
     
     try:
         results = search_recipes.invoke({
@@ -122,7 +122,7 @@ def substitute_ingredients_node(state: RecipeAgentState) -> Dict[str, Any]:
                 ingredients_to_substitute.append(word)
                 break
     
-    from .tools import find_ingredient_substitutions
+    from agent.tools import find_ingredient_substitutions
     
     substitutions = {}
     for ingredient in ingredients_to_substitute[:3]:  # Limit to 3 ingredients
@@ -158,7 +158,7 @@ def create_meal_plan_node(state: RecipeAgentState) -> Dict[str, Any]:
                 days = int(word)
                 break
     
-    from .tools import create_meal_plan
+    from agent.tools import create_meal_plan
     
     try:
         meal_plan = create_meal_plan.invoke({

@@ -23,3 +23,7 @@ help = "Run the Recipe Agent in CLI mode"
 [tool.poe.tasks.recipeagent-serve]
 cmd = "python apps/reciepe_agent/main.py serve"
 help = "Run the Recipe Agent API server"
+
+[tool.poe.tasks.recipeagent-langgraph-dev]
+cmd = "langgraph dev --config apps/reciepe_agent/langgraph.json"
+help = "Run the Recipe Agent in LangGraph local server with LangGraph IDE on 127.0.0.1:8000"

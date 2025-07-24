@@ -1,6 +1,6 @@
 """Recipe Agent package."""
 
-from .graph import create_recipe_agent
-from .state import RecipeAgentState
+from agent.graph import create_recipe_agent
+from agent.state import RecipeAgentState
 
 __all__ = ["create_recipe_agent", "RecipeAgentState"]

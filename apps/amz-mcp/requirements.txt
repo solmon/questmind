@@ -1,5 +1,0 @@
-FastMCP
-pydantic
-httpx
-asyncio
-pyperclip

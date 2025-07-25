@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from agent.graph import run_recipe_agent, recipe_agent
+from agent.graph import run_recipe_agent, recipe_agent, run_recipe_agent_with_mcp
 from api.routes import router
 
 # Load environment variables
@@ -49,9 +49,15 @@ async def root():
 
 def run_cli():
     """Run the CLI interface."""
-    print("🍳 Recipe Agent CLI")
+    print("🍳 Enhanced Recipe Agent CLI")
     print("=" * 50)
-    print("Ask me anything about recipes, cooking, meal planning, or ingredient substitutions!")
+    print("Features:")
+    print("• Separate Recipe and Grocery LLM assistants")
+    print("• Structured workflow with confirmation points")
+    print("• Real grocery store integration via MCP")
+    print("• Can go back to recipe search anytime")
+    print("=" * 50)
+    print("Ask me to find recipes and I'll help you get the ingredients!")
     print("Type 'quit' or 'exit' to stop.\n")
     
     while True:
@@ -65,34 +71,63 @@ def run_cli():
             if not user_input:
                 continue
             
-            print("🤔 Thinking...")
+            print("🤔 Processing working for you...")
             
-            # Run the agent
-            result = run_recipe_agent(user_input)
-            
+            # Run the enhanced agent
+            # result = run_recipe_agent(user_input)
+            result = asyncio.run(run_recipe_agent_with_mcp(user_input))
+
             # Extract and display the response
-            messages = result.get("messages", [])
+            messages = result.get("display_messages", [])
             if messages:
-                last_message = messages[-1]
-                if hasattr(last_message, 'content'):
-                    print(f"\n🍽️ Recipe Agent: {last_message.content}\n")
-                else:
-                    print(f"\n🍽️ Recipe Agent: {str(last_message)}\n")
+                print(f"\n📝 Conversation ({len(messages)} messages):")
+                for i, message in enumerate(messages):
+                    if hasattr(message, 'content'):
+                        print(f"\n🍽️ Recipe Agent: {message.content}")
+                    else:
+                        print(f"\n🍽️ Recipe Agent: {str(message)}")
+            
+            # Display workflow information
+            workflow_stage = result.get("workflow_stage", "Not set")
+            print(f"\n📊 Workflow Stage: {workflow_stage}")
             
             # Display additional information if available
             if result.get("recipes"):
-                print(f"📚 Found {len(result['recipes'])} recipes")
+                recipes = result.get("recipes", [])
+                print(f"📚 Found {len(recipes)} recipes")
+                for i, recipe in enumerate(recipes[:2]):  # Show first 2
+                    print(f"   {i+1}. {recipe.get('title', 'Unknown')}")
+                    ingredients = recipe.get('ingredients', [])
+                    print(f"      Ingredients: {len(ingredients)} items")
+                
+            if result.get("searched_ingredients"):
+                print(f"🛒 Found {len(result['searched_ingredients'])} grocery items")
+                for ingredient in result['searched_ingredients'][:3]:  # Show first 3
+                    search_result = ingredient.get('search_result', {})
+                    print(f"  • {ingredient['name']}: {search_result.get('price', 'N/A')} at {search_result.get('store_name', search_result.get('store', 'Unknown'))}")
             
-            if result.get("meal_plan"):
-                print("📅 Meal plan created")
+            if result.get("ingredients_to_cart"):
+                cart_result = result.get("tool_outputs", {}).get("cart_result", {})
+                print(f"🛍️ Added {cart_result.get('item_count', 0)} items to cart")
+                print(f"💰 Total: {cart_result.get('total_cost', 'N/A')}")
+                print(f"🆔 Cart ID: {cart_result.get('cart_id', 'N/A')}")
             
-            if result.get("ingredient_substitutions"):
-                print("🔄 Ingredient substitutions found")
+            # Show workflow state
+            state_info = []
+            if result.get("user_wants_ingredients"):
+                state_info.append("User wants ingredients")
+            if result.get("ingredients_confirmed"):
+                state_info.append("Ingredients confirmed")
+            if result.get("grocery_items_confirmed"):
+                state_info.append("Cart items confirmed")
+            
+            if state_info:
+                print(f"🔄 Status: {' → '.join(state_info)}")
             
             if result.get("error_message"):
                 print(f"❌ Error: {result['error_message']}")
             
-            print("-" * 50)
+            print("-" * 70)
             
         except KeyboardInterrupt:
             print("\n👋 Happy cooking!")

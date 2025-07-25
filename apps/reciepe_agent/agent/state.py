@@ -11,6 +11,9 @@ class RecipeAgentState(TypedDict):
     # Conversation history
     messages: Annotated[List[BaseMessage], add_messages]
     
+    # Conversation messages to display
+    display_messages: List[BaseMessage]
+
     # User query and intent
     user_query: Optional[str]
     intent: Optional[str]  # search, recommend, substitute, plan, etc.
@@ -19,21 +22,18 @@ class RecipeAgentState(TypedDict):
     recipes: List[Dict]
     selected_recipe: Optional[Dict]
     ingredients: List[str]
-    dietary_restrictions: List[str]
-    cuisine_preference: Optional[str]
+    searched_ingredients: List[Dict]  # Ingredients found via MCP search
+    ingredients_to_cart: List[Dict]   # Confirmed ingredients for cart
     
     # Search and recommendation data
     search_results: List[Dict]
-    recommendations: List[Dict]
-    
-    # Substitution data
-    ingredient_substitutions: Dict[str, List[str]]
-    
-    # Meal planning data
-    meal_plan: Optional[Dict]
-    
+        
     # Processing flags
     needs_user_input: bool
+    user_wants_ingredients: Optional[bool]  # User wants to proceed with ingredient search
+    ingredients_confirmed: Optional[bool]   # User confirmed ingredients for grocery search
+    grocery_items_confirmed: Optional[bool]  # User confirmed grocery items for cart
+    workflow_stage: Optional[str]  # "recipe_search", "ingredient_confirmation", "grocery_search", "cart_confirmation"
     error_message: Optional[str]
     processing_complete: bool
     

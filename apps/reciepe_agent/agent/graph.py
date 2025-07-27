@@ -11,11 +11,9 @@ from langchain_core.tools import BaseTool
 from agent.state import RecipeAgentState
 from agent.nodes import (
     classify_intent_node,
-    recipe_llm_node,
-    ingredient_confirmation_node,
-    grocery_llm_node,
-    cart_confirmation_node,
-    add_to_cart_node,
+    llm_node,
+    recipe_confirmation_node,
+    recipe_plan_confirm_node,
     human_input_node
 )
 from agent.tools import recipe_tools
@@ -83,37 +81,22 @@ def route_check_user_confirmation(state: RecipeAgentState) -> Literal["yes", "no
         return "yes"
     return "no"
 
-
-# def route_after_recipe_search(state: RecipeAgentState) -> Literal["recipe_llm", "end"]:
-#     """Route after recipe search to recipe LLM."""
-#     if state.get("recipes"):
-#         return "recipe_llm"
-#     return "end"
-
-
 def route_user_response(state: RecipeAgentState) -> Literal["ingredient_confirmation", "grocery_llm", "add_to_cart", "recipe_llm", "end"]:
-    """Route based on user response and workflow stage."""
+    
     workflow_stage = state.get("workflow_stage", "recipe_search")
     print(f"Current workflow stage: {workflow_stage}")
     
     # After recipe display, check if user wants to proceed with ingredients
     if workflow_stage == "recipe_display" and route_check_user_confirmation(state) == "yes":
-        return "ingredient_confirmation"
-    # Handle user confirmation for ingredients
-    elif workflow_stage == "user_confirmed_ingredients" and state.get("user_wants_ingredients"):
-        return "ingredient_confirmation"
-    elif workflow_stage == "ingredient_confirmation" and route_check_user_confirmation(state) == "yes":
-        state["ingredients_confirmed"] = True
-        return "grocery_llm"
-    elif workflow_stage == "cart_confirmation" and state.get("grocery_items_confirmed"):
-        return "add_to_cart"
+        return "recipe_confirmation"
+    elif workflow_stage == "recipe_planning" and state.get("recipe_confirmed"):
+        return "recipe_plan_llm"
+    elif workflow_stage == "recipe_execution" and state.get("recipe_plan_confirmed"): 
+        return "recipe_execution_llm"
     elif state.get("user_query", "").lower() in ["back", "change recipe", "new recipe", "different recipe"]:
-        return "recipe_llm"
+        return "recipe_llm"    
     else:
         return "end"
-
-
-
 
 def should_call_tools(state: RecipeAgentState) -> Literal["tools", "cart_confirmation"]:
     """Check if grocery LLM wants to call tools."""
@@ -132,7 +115,10 @@ def should_continue(state: RecipeAgentState) -> Literal["continue", "end"]:
     return "continue"
 
 
+
 def create_recipe_agent(include_mcp_tools: bool = False) -> StateGraph:
+    
+    
     """Create the Recipe Agent graph with enhanced workflow.
     
     Args:
@@ -144,17 +130,19 @@ def create_recipe_agent(include_mcp_tools: bool = False) -> StateGraph:
     
     # Add nodes for the enhanced workflow
     workflow.add_node("classify_intent", classify_intent_node)
-    # workflow.add_node("search_recipes", search_recipes_node)
-    workflow.add_node("recipe_llm", recipe_llm_node)  # Dedicated recipe LLM
-    workflow.add_node("ingredient_confirmation", ingredient_confirmation_node)
-    workflow.add_node("grocery_llm", grocery_llm_node)  # Dedicated grocery LLM with MCP tools
-    workflow.add_node("cart_confirmation", cart_confirmation_node)
-    workflow.add_node("add_to_cart", add_to_cart_node)
-    workflow.add_node("human_input", human_input_node)
+    workflow.add_node("recipe_llm", llm_node)  # Unified LLM node
+    workflow.add_node("recipe_confirmation", recipe_confirmation_node)
+    workflow.add_node("recipe_plan_llm", llm_node)  # Unified LLM node
+    workflow.add_node("recipe_plan_confirmation", recipe_plan_confirm_node)    
+    workflow.add_node("recipe_execution_llm", llm_node)  # Unified LLM node
     
+    # workflow.add_node("cart_confirmation", cart_confirmation_node)
+    # workflow.add_node("add_to_cart", add_to_cart_node)
+    workflow.add_node("human_input", human_input_node)
+    # workflow.add_node("human_approval", human_approval_node)
     # Prepare tools
     all_tools = recipe_tools.copy()
-    
+
     # Add MCP tools if requested and available
     if include_mcp_tools:
         mcp_tools = get_mcp_tools()
@@ -163,10 +151,10 @@ def create_recipe_agent(include_mcp_tools: bool = False) -> StateGraph:
             logger.info(f"Added {len(mcp_tools)} MCP tools to agent")
         else:
             logger.warning("MCP tools requested but none available")
-    
-    # Add tool node for all tools (mainly used by grocery_llm)
-    tool_node = ToolNode(all_tools)
-    workflow.add_node("tools", tool_node)
+
+    # Add tool_execution node for tool execution (mainly used by grocery_llm)
+    tool_execution_node = ToolNode(all_tools)
+    workflow.add_node("tool_execution", tool_execution_node)
 
     # Set entry point
     workflow.set_entry_point("classify_intent")
@@ -186,62 +174,79 @@ def create_recipe_agent(include_mcp_tools: bool = False) -> StateGraph:
     # 3. Recipe LLM -> Human input for confirmation to proceed with ingredients
     workflow.add_conditional_edges(
         "recipe_llm",
-        lambda state: "human_input" if state.get("recipes") else "end",
+        lambda state: "recipe_confirmation" if state.get("recipes") else "end",
         {
-            "human_input": "human_input",
+            "recipe_confirmation": "recipe_confirmation",
+            "end": END
+        }
+    )
+
+    # Recipe plan LLM -> Recipe plan confirmation
+    workflow.add_conditional_edges(
+        "recipe_plan_llm",
+        lambda state: "recipe_plan_confirmation" if state.get("plan_extract") else "end",
+        {
+            "recipe_plan_confirmation": "recipe_plan_confirmation",
             "end": END
         }
     )
     
+    # recipe confirmation -> recipe plan LLM 
+    workflow.add_conditional_edges(
+        "recipe_confirmation",
+        lambda state: "recipe_planning" if state.get("recipe_confirmed") else "end",
+        {
+            "recipe_planning": "recipe_plan_llm",
+            "end": "human_input"
+        }
+    )
+
+
     # 4. Human input -> Route based on user response and stage
     workflow.add_conditional_edges(
         "human_input",
         route_user_response,
         {
-            "ingredient_confirmation": "ingredient_confirmation",
-            "grocery_llm": "grocery_llm", 
-            "add_to_cart": "add_to_cart",
+            "recipe_confirmation": "recipe_confirmation",
+            "recipe_plan_llm": "recipe_plan_llm", 
+            "recipe_execution_llm": "recipe_execution_llm",
             "recipe_llm": "recipe_llm",  # Back to recipe search
             "end": END
         }
     )
     
-    # 5. Ingredient confirmation -> Grocery LLM (auto-proceed for demo)
+    #  # 5. Ingredient confirmation -> Grocery LLM (auto-proceed for demo)
     workflow.add_conditional_edges(
-        "ingredient_confirmation",
-        lambda state: "grocery_llm" if state.get("ingredients_confirmed") else "end",
+        "recipe_plan_confirmation",
+        lambda state: "recipe_execution" if state.get("recipe_plan_confirmed") else "end",
         {
-            "grocery_llm": "grocery_llm",
+            "recipe_execution": "recipe_execution_llm",
             "end": "human_input"
         }
     )
-    
-    # 6. Grocery LLM -> Cart confirmation (check for searched ingredients)
+  
+
+    #  # 5. Ingredient confirmation -> Grocery LLM (auto-proceed for demo)
+    # workflow.add_conditional_edges(
+    #     "recipe_plan_llm",
+    #     lambda state: "recipe_execution" if state.get("recipe_plan_confirmed") else "end",
+    #     {
+    #         "recipe_execution": "recipe_execution_llm",
+    #         "end": "human_input"
+    #     }
+    # )
+    # 8. Recipe execution LLM -> Tool execution or cart confirmation
     workflow.add_conditional_edges(
-        "grocery_llm",
-        lambda state: "cart_confirmation" if state.get("searched_ingredients") or state.get("workflow_stage") == "grocery_search_complete" else "end",
+        "recipe_execution_llm",
+        should_call_tools,
         {
-            # "cart_confirmation": "cart_confirmation",
-            "cart_confirmation": END,
-            "end": END
+            "tools": "tool_execution",
+            "cart_confirmation": END
         }
     )
-    
-    # 7. Tools -> Back to Grocery LLM (for tool result processing)
-    workflow.add_edge("tools", "grocery_llm")
-    
-    # 8. Cart confirmation -> Add to cart (auto-proceed for demo)
-    workflow.add_conditional_edges(
-        "cart_confirmation",
-        lambda state: "add_to_cart" if state.get("grocery_items_confirmed") else "end",
-        {
-            "add_to_cart": "add_to_cart",
-            "end": END
-        }
-    )
-    
-    # 9. Add to cart -> End (workflow complete)
-    workflow.add_edge("add_to_cart", END)
+
+    # 9. Tool execution -> End (workflow complete)
+    workflow.add_edge("tool_execution", END)
     
     # Compile the graph
     return workflow.compile()
@@ -272,12 +277,10 @@ def run_recipe_agent(query: str, **kwargs) -> dict:
         "user_query": query,
         "messages": [HumanMessage(content=query)],
         "recipes": [],
-        "search_results": [],
         "searched_ingredients": [],
         "ingredients_to_cart": [],        
         "needs_user_input": False,
-        "user_wants_ingredients": None,
-        "ingredients_confirmed": None,
+        "recipe_confirmed": False,
         "grocery_items_confirmed": None,
         "workflow_stage": "initial",  # Start with initial instead of None
         "error_message": None,
@@ -285,9 +288,10 @@ def run_recipe_agent(query: str, **kwargs) -> dict:
         "tool_outputs": {}
     }
     
-    # Run the agent
-    result = recipe_agent.invoke(initial_state)
-    return result
+    # Run the agent asynchronously
+    async def _run():
+        return await recipe_agent.ainvoke(initial_state)
+    return asyncio.run(_run())
 
 
 async def run_recipe_agent_with_mcp(query: str, **kwargs) -> dict:
@@ -296,12 +300,10 @@ async def run_recipe_agent_with_mcp(query: str, **kwargs) -> dict:
         "user_query": query,
         "messages": [HumanMessage(content=query)],
         "recipes": [],
-        "search_results": [],
         "searched_ingredients": [],
         "ingredients_to_cart": [],
         "needs_user_input": False,
-        "user_wants_ingredients": None,
-        "ingredients_confirmed": None,
+        "recipe_confirmed": False,
         "grocery_items_confirmed": None,
         "workflow_stage": "initial",  # Start with initial instead of None
         "error_message": None,
@@ -311,7 +313,5 @@ async def run_recipe_agent_with_mcp(query: str, **kwargs) -> dict:
     
     # Create agent with MCP tools
     agent = await create_recipe_agent_with_mcp()
-    
-    # Run the agent
-    result = agent.invoke(initial_state)
-    return result
+    # Run the agent asynchronously
+    return await agent.ainvoke(initial_state)

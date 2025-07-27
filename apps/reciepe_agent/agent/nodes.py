@@ -5,15 +5,16 @@ import asyncio
 from dotenv import load_dotenv
 
 from typing import Dict, Any
+
 import re
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-# from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import ChatPromptTemplate
-
 from agent.state import RecipeAgentState
 from agent.tools import recipe_tools
 from agent.tools import mock_recipes
+# context7 prompt imports
+from prompts.system_prompts import RECIPE_SYSTEM_PROMPT, GROCERY_SYSTEM_PROMPT, RECIPE_PLAN_SYSTEM_PROMPT, GROCERY_EXEC_SYSTEM_PROMPT
+from prompts.chat_prompts import RECIPE_CHAT_PROMPT, GROCERY_CHAT_PROMPT, RECIPE_ARTICLE_CHAT_PROMPT, GROCERY_EXEC_CHAT_PROMPT
 
 load_dotenv()
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
@@ -36,9 +37,103 @@ def classify_intent_node(state: RecipeAgentState) -> Dict[str, Any]:
         "processing_complete": False
     }
 
+# --- Modularized LLM Node Logic ---
+def _select_llm_prompts_and_tools(state: RecipeAgentState):
+    """Selects the correct prompt templates and tools for the current workflow stage."""
+    
+    from agent.graph import get_mcp_tools
+    workflow_stage = state.get("workflow_stage", "recipe_llm")
+    user_query = state.get("user_query", "")
+    context_parts = []
+    all_tools = recipe_tools.copy()
 
-def recipe_llm_node(state: RecipeAgentState) -> Dict[str, Any]:
-    """Dedicated LLM node for recipe search and refinement."""
+    if workflow_stage in ["recipe_execution", "grocery_llm", "grocery_searching", "grocery_search_complete"]:
+        mcp_tools = get_mcp_tools()
+        if mcp_tools:
+            all_tools.extend(mcp_tools)
+        # selected_recipe = state.get("selected_recipe", {})
+        recipe_plan = state.get("plan_extract", {})
+        # ingredients = state.get("ingredients", [])
+        # if selected_recipe:
+        #     context_parts.append(f"Recipe: {selected_recipe.get('title', 'Unknown')}")
+        # if ingredients:
+        #     context_parts.append(f"Ingredients to search: {', '.join(ingredients[:5])}")
+        # context = " | ".join(context_parts) if context_parts else "Ready to search for ingredients"
+        
+        tool_names = ", ".join([tool.name for tool in all_tools])
+        num_tools = len(all_tools)
+        rendered_prompt = [
+            GROCERY_EXEC_SYSTEM_PROMPT.format(num_tools=num_tools, tool_names=tool_names),
+            GROCERY_EXEC_CHAT_PROMPT.format(user_query=recipe_plan)
+        ]
+        return rendered_prompt, all_tools, "execute"
+    elif workflow_stage in ["recipe_planning"]:
+        mcp_tools = get_mcp_tools()
+        if mcp_tools:
+            all_tools.extend(mcp_tools)
+        tool_names = ", ".join([tool.name for tool in all_tools])
+        num_tools = len(all_tools)
+        context = " | ".join(context_parts) if context_parts else "No specific context"
+        rendered_prompt = [
+            RECIPE_PLAN_SYSTEM_PROMPT.format(num_tools=num_tools, tool_names=tool_names),
+            RECIPE_ARTICLE_CHAT_PROMPT.format(selected_recipe=state.get("selected_recipe", {}), context=context)
+        ]
+        return rendered_prompt, all_tools, "plan"
+    else:        
+        context = " | ".join(context_parts) if context_parts else "No specific context"
+        rendered_prompt = [
+            RECIPE_SYSTEM_PROMPT.format(),
+            RECIPE_CHAT_PROMPT.format(user_query=user_query, context=context)
+        ]
+        return rendered_prompt, all_tools, "recipe"
+
+async def _invoke_llm_with_tools(llm, rendered_prompt, tools=None):
+    """Invoke the LLM, binding tools if provided."""
+    if tools:
+        llm = llm.bind_tools(tools)
+        print("Invoking LLM asynchronously with tools...")
+        return llm.invoke(rendered_prompt)                
+    else:
+        # No tools, just invoke with the prompt
+        print(f"Invoking LLM with prompt: {rendered_prompt}")
+        return llm.invoke(rendered_prompt)       
+
+def _extract_recipes_from_response(response):
+    """Extract recipes from LLM response content."""
+    recipes = []
+    if response and hasattr(response, "content"):
+        content = response.content
+        # Try to extract title from the first line or bolded heading
+        title_match = re.search(r"^(.*?recipe.*?)\n", content, re.IGNORECASE)
+        if title_match:
+            title = title_match.group(1).strip()
+        else:
+            # Fallback: use first non-empty line
+            lines = [line.strip() for line in content.splitlines() if line.strip()]
+            title = lines[0] if lines else "Recipe"
+        # # Extract ingredients section (markdown style)
+        # ingredients_section = re.search(r"\*\*Ingredients:\*\*(.*?)(\*\*Instructions:\*\*|$)", content, re.DOTALL | re.IGNORECASE)
+        # ingredients = []
+        # if ingredients_section:
+        #     ingredients_text = ingredients_section.group(1)
+        #     # Match markdown bullet points
+        #     ingredients = re.findall(r"^\s*[\*\-•]\s+(.*)", ingredients_text, re.MULTILINE)
+        #     # Remove bolded subheadings (e.g., **For the Lamb Filling:**)
+        #     ingredients = [i for i in ingredients if not re.match(r"\*\*.*\*\*:", i)]
+        recipes.append({
+            "title": title,
+            "recipe_msg": response.content
+            # "title": title,
+            # "ingredients": [i.strip() for i in ingredients] if ingredients else []
+        })
+    return recipes
+
+async def llm_node(state: RecipeAgentState) -> Dict[str, Any]:
+    """Unified and modular LLM node for both recipe and grocery workflow stages."""
+    # Select prompts and tools
+    rendered_prompt, all_tools, mode = _select_llm_prompts_and_tools(state)
+    user_query = state.get("user_query", "")
+    # LLM setup
     llm = ChatGoogleGenerativeAI(
         model="gemini-2.0-flash",
         google_api_key=GEMINI_API_KEY,
@@ -46,115 +141,120 @@ def recipe_llm_node(state: RecipeAgentState) -> Dict[str, Any]:
         transport="rest",
         client_options={"api_endpoint": "https://generativelanguage.googleapis.com"}
     )
-
-    # Build context from state
-    context_parts = []
-    
-    # if state.get("recipes"):
-    #     recipes = state.get("recipes", [])
-    #     context_parts.append(f"Found {len(recipes)} recipes")
-    #     # Add recipe details for refinement
-    #     for i, recipe in enumerate(recipes[:2]):
-    #         context_parts.append(f"Recipe {i+1}: {recipe.get('title', 'Unknown')} - {len(recipe.get('ingredients', []))} ingredients")
-    
-    # if state.get("search_results"):
-    #     context_parts.append("Search results available")
-    
-    # if state.get("error_message"):
-    #     context_parts.append(f"Error: {state['error_message']}")
-    
-    # Create system prompt focused on recipes
-    system_prompt = """You are a recipe specialist assistant. Your role is to:
-    - Help users find and refine recipes
-    - Provide detailed recipe information including ingredients, instructions, and cooking tips
-    - Ask if the user wants to proceed with ingredient shopping once they're satisfied with a recipe
-
-    When showing recipes, always ask if the user wants to:
-    1. Refine or modify the recipe
-    2. Search for a different recipe 
-    3. Proceed with finding ingredients for this recipe
-
-    Be friendly, detailed, and focus on the culinary aspects."""
-    
-    user_query = state.get("user_query", "")
-    context = " | ".join(context_parts) if context_parts else "No specific context"
-    
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("human", f"User query: {user_query}\nContext: {context}\n\nProvide a helpful recipe-focused response.")
-    ])
-    
     try:
-        # mock for reduce llm calls
-        is_mock_recipes = True
-
-        if is_mock_recipes:
-            # Use mock recipes for demo purposes
-            state["recipes"] = mock_recipes()
-
-             # Print messages directly
-            print(f"mocked the recipes:")
-            
+        # Mock for recipe mode
+        if mode == "recipe":
+            is_mock_recipes = False
+            if is_mock_recipes:
+                state["recipes"] = mock_recipes()
+                print(f"mocked the recipes:")
+                return {
+                    "messages": [],
+                    "recipes": state["recipes"],
+                    "workflow_stage": "recipe_display",
+                    "user_wants_ingredients": False,
+                    "needs_user_input": True,
+                    "processing_complete": False,
+                    "error_message": None
+                }
+        
+        # LLM invocation
+        response = await _invoke_llm_with_tools(llm, rendered_prompt, all_tools if mode in ["plan","execute"] else None)
+        # print(f"LLM Response: {getattr(response, 'content', response)}")
+        messages = state.get("messages", [])
+        if mode == "recipe":
+            messages.append(AIMessage(content=response.content))
+            recipes = _extract_recipes_from_response(response)
+            if recipes:
+                state["recipes"] = recipes
+            for msg in messages:
+                if hasattr(msg, 'content'):
+                    print(f"{type(msg).__name__}: {msg.content}")
+                else:
+                    print(str(msg))
             return {
-                "messages": [],
+                "messages": messages,
                 "recipes": state["recipes"],
-                "workflow_stage": "recipe_display",  # Set to recipe display stage for user confirmation
+                "workflow_stage": "recipe_display",
                 "user_wants_ingredients": False,
-                "needs_user_input": True,  # Require user input for confirmation
-                "processing_complete": False,  # Don't complete, wait for user input
+                "needs_user_input": True,
+                "processing_complete": False,
                 "error_message": None
             }
-        
-        response = llm.invoke(prompt.format_messages())
-        
-        # Add to messages
-        messages = state.get("messages", [])
-        messages.append(AIMessage(content=response.content))
-        # Try to extract recipes from the LLM response if present
-        recipes = []
-        if response and hasattr(response, "content"):
-            # Simple heuristic: look for recipe titles and ingredients in the response
-            recipe_blocks = re.findall(r"(?i)(recipe\s*[:\-]\s*.*?)(?:\n{2,}|$)", response.content, re.DOTALL)
-            for block in recipe_blocks:
-                title_match = re.search(r"(?i)recipe\s*[:\-]\s*(.*)", block)
-                ingredients_match = re.findall(r"(?i)[•\-]\s*(.+)", block)
-                if title_match:
-                    title = title_match.group(1).strip()
-                else:
-                    title = "Recipe"
-                recipes.append({
-                    "title": title,
-                    "ingredients": [i.strip() for i in ingredients_match] if ingredients_match else []
-                })
-        if recipes:
-            state["recipes"] = recipes
+        elif mode == "plan":
+            messages.append(AIMessage(content=response.content))
+            plan_extract = response.content
+            
+            return {
+                "messages": messages,
+                "workflow_stage": "recipe_plan_display",
+                "plan_extract": plan_extract,
+                "recipe_plan_confirmed": False                
+            }
+        elif mode == "execute":
+            messages.append(AIMessage(content=response.content))    
+            if hasattr(response, 'tool_calls') and response.tool_calls:                
+                # Iterate over all tool_calls, invoke the tool, and capture the output
+                tool_outputs = {}
+                # for tool_call in response.tool_calls:
+                #     tool_name = tool_call.get("name")
+                #     tool_args = tool_call.get("args", {})
+                #     # Find the tool by name
+                #     tool = next((t for t in all_tools if t.name == tool_name), None)
+                #     if tool:
+                #         try:
+                #             # context7: invoke tool and capture output
+                #             output = await asyncio.to_thread(tool, **tool_args)
+                #             tool_outputs[tool_name] = output
+                #             print(f"Tool '{tool_name}' output: {output}")
+                #         except Exception as e:
+                #             tool_outputs[tool_name] = f"Error: {str(e)}"
+                #             print(f"Error invoking tool '{tool_name}': {e}")
+                #     else:
+                #         tool_outputs[tool_name] = "Tool not found"
+                #         print(f"Tool '{tool_name}' not found in available tools.")
+                # messages.append(AIMessage(content="Executed all tool calls."))
+                # state["tool_outputs"] = tool_outputs
+                return {
+                    "messages": messages,
+                    "workflow_stage": "recipe_execution",
+                    "needs_user_input": True,
+                    "processing_complete": False,
+                    "error_message": None
+                }
 
-        # Check if we have recipes to work with
-        has_recipes = bool(state.get("recipes"))
-        
-        # Print messages directly
-        for msg in messages:
-            if hasattr(msg, 'content'):
-                print(f"{type(msg).__name__}: {msg.content}")
+            return {
+                "messages": messages,
+                "workflow_stage": "recipe_execution",               
+                "processing_complete": False,
+                "error_message": None
+            }
+        else:
+            messages.append(response)
+            if hasattr(response, 'tool_calls') and response.tool_calls:
+                return {
+                    "messages": messages,
+                    "workflow_stage": "grocery_searching",
+                    "needs_user_input": True,
+                    "processing_complete": False,
+                    "error_message": None
+                }
             else:
-                print(str(msg))
-
-        return {
-            "messages": messages,
-            "workflow_stage": "recipe_display",  # Set to recipe display stage for user confirmation
-            "user_wants_ingredients": False,
-            "needs_user_input": True,  # Require user input for confirmation
-            "processing_complete": False,  # Don't complete, wait for user input
-            "error_message": None
-        }
+                return {
+                    "messages": messages,
+                    "workflow_stage": "grocery_search_complete",
+                    "needs_user_input": True,
+                    "processing_complete": False,
+                    "error_message": None
+                }
     except Exception as e:
         return {
-            "error_message": f"Error in recipe LLM: {str(e)}",
+            "error_message": f"Error in LLM node: {str(e)}",
             "processing_complete": True
         }
 
 
-def ingredient_confirmation_node(state: RecipeAgentState) -> Dict[str, Any]:
+def recipe_confirmation_node(state: RecipeAgentState) -> Dict[str, Any]:
     """Display ingredients to user for confirmation before grocery search."""
     recipes = state.get("recipes", [])
     if not recipes:
@@ -162,23 +262,16 @@ def ingredient_confirmation_node(state: RecipeAgentState) -> Dict[str, Any]:
             "error_message": "No recipes available for ingredient confirmation",
             "processing_complete": True
         }
-    
-    # Use the first/selected recipe
-    selected_recipe = recipes[0]
-    ingredients = selected_recipe.get("ingredients", [])
-    
-    if not ingredients:
-        return {
-            "error_message": "No ingredients found in the selected recipe",
-            "processing_complete": True
-        }
-    
-    # Create ingredient confirmation message
-    ingredient_list = "\n".join([f"• {ingredient}" for ingredient in ingredients])
-    confirmation_message = f"""
-Here are the ingredients for {selected_recipe.get('title', 'the recipe')}:
 
-{ingredient_list}
+    selected_recipe = state.get("selected_recipe", recipes[0] if recipes else {})
+    # ingredients = state.get("ingredients", [])
+    # ingredient_list = "\n".join([f"• {ingredient}" for ingredient in ingredients])
+
+
+    confirmation_message = f"""
+Here is the reciepe for {selected_recipe.get('title', 'the recipe')}:
+
+{selected_recipe.get('recipe_msg', 'No recipe details available')}
 
 Would you like me to search for these ingredients in local grocery stores? 
 You can say:
@@ -195,146 +288,49 @@ You can say:
     return {
         # "messages": messages,
         "selected_recipe": selected_recipe,
-        "ingredients": ingredients,
-        "workflow_stage": "ingredient_confirmation", 
-        "needs_user_input": True,  # Auto-proceed for CLI demo
-        "ingredients_confirmed": False,  # Auto-confirm for demo
-        "processing_complete": False,
-        "error_message": None
+        "workflow_stage": "recipe_confirmation", 
+        "recipe_confirmed": False,  # Auto-confirm for demo        
     }
 
-async def grocery_llm_node(state: RecipeAgentState) -> Dict[str, Any]:
-    """Dedicated LLM node for grocery assistance using MCP tools."""
-    from agent.graph import get_mcp_tools
-    from agent.tools import recipe_tools
-
-    # Get all available tools including MCP
-    all_tools = recipe_tools.copy()
-    mcp_tools = get_mcp_tools()
-    if mcp_tools:
-        all_tools.extend(mcp_tools)
-
-    print(f"Using {len(all_tools)} tools for grocery search: {[tool.name for tool in all_tools]}")
-
-    # Create LLM with tool binding for grocery search
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash",
-        google_api_key=GEMINI_API_KEY,
-        temperature=0.1,
-        transport="rest",
-        client_options={"api_endpoint": "https://generativelanguage.googleapis.com"}
-    )
-
-    # Bind tools to LLM
-    llm_with_tools = llm.bind_tools(all_tools)
-
-    # Build context for grocery search
-    ingredients = state.get("ingredients", [])
-    selected_recipe = state.get("selected_recipe", {})
-
-    context_parts = []
-    if selected_recipe:
-        context_parts.append(f"Recipe: {selected_recipe.get('title', 'Unknown')}")
-    if ingredients:
-        context_parts.append(f"Ingredients to search: {', '.join(ingredients[:5])}")
-
-    # Create system prompt focused on grocery search
-    system_prompt = f"""You are a grocery shopping assistant with access to {len(all_tools)} tools including MCP grocery store tools.
-
-Your role is to:
-- Search for recipe ingredients in local grocery stores using MCP tools available
-- plan the actions on how to use the MCP tools
-- Find the best prices and availability
-- Show detailed product information including prices, stores, and availability
-- Help users build their shopping cart
-
-IMPORTANT: Use the available MCP grocery tools to search for each ingredient. Focus on:
-1. Real store search using MCP tools
-2. Price comparison across stores
-3. Product availability and details
-4. Clear presentation of shopping options
-
-Available tools for grocery search: {[tool.name for tool in all_tools]}
-prefferred location id for the store to tool is : 70300720
-Always use tools to search for the ingredients and provide real grocery store results."""
-
-    user_query = state.get("user_query", "")
-    context = " | ".join(context_parts) if context_parts else "Ready to search for ingredients"
-
-    print(f"Using system prompt: {system_prompt}")
-
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("human", f"Please search for these ingredients in grocery stores: {', '.join(ingredients)}\nUser context: {user_query}\nAdditional context: {context}")
-    ])
-
-    try:
-        # Get formatted messages
-        formatted_messages = prompt.format_messages()
-
-        # Call LLM with tools
-        response = await llm_with_tools.ainvoke(formatted_messages)
-        # response = None
-
-        # Print response content
-        print(f"LLM Response: {response.content}")
-
-        # Add to messages
-        messages = state.get("messages", [])
-        messages.append(response)
-
-        # Check if LLM wants to use tools
-        if hasattr(response, 'tool_calls') and response.tool_calls:
-            tool_outputs = {}
-            for tool_call in response.tool_calls:
-                tool_name = tool_call.get("name")
-                tool_args = tool_call.get("args", {})
-                tool = next((t for t in all_tools if t.name == tool_name), None)
-                if tool:
-                    try:
-                        print(f"Invoking tool: {tool_name} with args: {tool_args}")
-                        tool_result = await tool.ainvoke(tool_args)
-                        print(f"Tool '{tool_name}' result: {tool_result}")
-                        tool_outputs[tool_name] = tool_result
-                    except Exception as tool_exc:
-                        print(f"Error invoking tool '{tool_name}': {tool_exc}")
-                        tool_outputs[tool_name] = {"error": str(tool_exc)}
-                else:
-                    print(f"Tool '{tool_name}' not found among available tools.")
-                    tool_outputs[tool_name] = {"error": "Tool not found"}
-            # Optionally, update searched_ingredients if tool results are ingredient searches
-            searched_ingredients = []
-            for result in tool_outputs.values():
-                if isinstance(result, dict) and "product_id" in result:
-                    searched_ingredients.append({
-                        "name": result.get("title", "Unknown"),
-                        "search_result": result
-                    })
-            state["tool_outputs"] = tool_outputs
-            state["searched_ingredients"] = searched_ingredients
-            return {
-                "messages": messages,
-                "tool_outputs": tool_outputs,
-                "searched_ingredients": searched_ingredients,
-                "workflow_stage": "grocery_search_complete",
-                "needs_user_input": True,
-                "processing_complete": False,
-                "error_message": None
-            }
-        else:
-            return {
-                "messages": messages,
-                "workflow_stage": "grocery_search_complete",
-                "needs_user_input": True,
-                "processing_complete": False,
-                "error_message": None
-            }
-
-    except Exception as e:
+def recipe_plan_confirm_node(state: RecipeAgentState) -> Dict[str, Any]:
+    """Display ingredients to user for confirmation before grocery search."""
+    recipes = state.get("plan_extract", {})
+    if not recipes:
         return {
-            "error_message": f"Error in grocery LLM: {str(e)}",
+            "error_message": "No plan available for display",
             "processing_complete": True
         }
+
+    selected_recipe = state.get("selected_recipe",{})
+
+    # selected_recipe = state.get("selected_recipe", recipes[0] if recipes else {})
+    # ingredients = state.get("ingredients", [])
+    # ingredient_list = "\n".join([f"• {ingredient}" for ingredient in ingredients])
+
+
+    confirmation_message = f"""
+Here is the plan for reciepe execution for {selected_recipe.get('title', 'the recipe')}:
+
+{recipes}
+
+Would you like me to proceed with executing the plan? 
+You can say:
+- "Yes" or "Proceed" to search for grocery items
+- "Back" or "Change recipe" to go back to recipe search
+- Modify specific ingredients if needed
+"""
+    # Print confirmation message directly
+    print(confirmation_message)
+    # Add confirmation message
+    # messages = state.get("messages", [])
+    # messages.append(AIMessage(content=confirmation_message))
+    
+    return {
+        # "messages": messages,
+        "selected_recipe": selected_recipe,
+        "workflow_stage": "recipe_plan_display", 
+        "recipe_plan_confirmed": False,  # Auto-confirm for demo        
+    }
 
 
 def cart_confirmation_node(state: RecipeAgentState) -> Dict[str, Any]:
@@ -469,18 +465,60 @@ def human_input_node(state: RecipeAgentState) -> Dict[str, Any]:
     """Handle human input and update state."""
     # In a real implementation, this would capture actual user input
     # display the current stage of the agent in the stdio
-    print("\n🍽️ Recipe Agent Stage:")
-    workflow_stage = state.get("workflow_stage", "hellooooo")
-    print(f"  {workflow_stage}")
+    workflow_stage = state.get("workflow_stage", "recipe_search")
+    print(f"Current workflow stage: {workflow_stage}")
     # Capture user input from stdio
     user_input = input("Your response: ").strip()
-    if user_input:
+
+
+    if workflow_stage == "recipe_confirmation" and user_input in ["yes", "proceed", "continue"]:
         return {
-            "user_query": user_input,
-            "needs_user_input": False
+            "recipe_confirmed": True,
+            "workflow_stage": "recipe_planning",
+            "user_query": user_input           
+        }
+    elif workflow_stage == "recipe_plan_display" and user_input in ["yes", "proceed", "confirm", "continue"]:
+        return {
+            "recipe_plan_confirmed": True,
+            "workflow_stage": "recipe_execution",
+            "user_query": user_input           
+        }
+    else:    
+        return {
+            "user_query": user_input
         }
 
+
+# Add a new node for human approval before adding to cart
+def human_approval_node(state: RecipeAgentState) -> dict:
+    """Ask user to approve found grocery items before adding to cart."""
+    searched_ingredients = state.get("searched_ingredients", [])
+    tool_outputs = state.get("tool_outputs", {})
+    if not searched_ingredients and not tool_outputs:
+        return {
+            "error_message": "No grocery search results available for approval",
+            "processing_complete": True
+        }
+    # Build approval message
+    approval_parts = ["Here are the grocery items I found:"]
+    for item in searched_ingredients[:10]:
+        name = item.get("name", "Unknown item")
+        search_result = item.get("search_result", {})
+        price = search_result.get("price", "N/A")
+        store = search_result.get("store_name", search_result.get("store", "Unknown store"))
+        approval_parts.append(f"• {name}: {price} at {store}")
+    approval_parts.append("\nWould you like to add these items to your cart? (yes/no)")
+    approval_message = "\n".join(approval_parts)
+    print(approval_message)
+    user_input = input("Approve items for cart? (yes/no): ").strip().lower()
+    approved = user_input in ["yes", "y"]
     return {
+        "messages": state.get("messages", []),
+        "searched_ingredients": searched_ingredients,
+        "tool_outputs": tool_outputs,
+        "workflow_stage": "human_approval",
         "needs_user_input": False,
-        "processing_complete": True
+        "grocery_items_confirmed": approved,
+        "processing_complete": False,
+        "error_message": None
     }
